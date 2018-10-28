@@ -16,7 +16,23 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+
+    sourceSets{
+        main{
+            assets.srcDirs = ["./src/main/assets"]
+        }
+    }
+
+    aaptOptions {
+        noCompress "tflite"
+    }
+
 }
+
+project.ext.ASSET_DIR = projectDir.toString() + '/src/main'
+project.ext.TMP_DIR = project.buildDir.toString() + '/downloads'
+
+apply from: "download-models.gradle"
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])

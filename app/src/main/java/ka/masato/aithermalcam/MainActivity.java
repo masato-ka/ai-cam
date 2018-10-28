@@ -11,6 +11,8 @@ import android.os.HandlerThread;
 import android.util.Log;
 import com.google.android.things.pio.PeripheralManager;
 import ka.masato.grideyelib.driver.GridEyeDriver;
+import ka.masato.library.ai.ssddetection.MultiObjectDetector;
+import ka.masato.library.ai.ssddetection.exception.FailedInitializeDetectorException;
 import ka.masato.library.device.camera.CameraController;
 import ka.masato.library.device.camera.ImagePreprocessor;
 import ka.masato.library.device.camera.exception.NoCameraFoundException;
@@ -45,24 +47,38 @@ public class MainActivity extends Activity {
     private static final int IMAGE_WIDTH = 640;
     private static final int IMAGE_HEIGHT = 480;
 
+    private static final String MODEL_FILE_PATH = "";
+    private static final String LABEL_FILE_PATH = "";
+
     private static final String I2C_PORT = "I2C1";
     private static final int ADDRESS_GRID_EYE = 0x68;
 
     private GridEyeDriver gridEyeDriver;
 
+    private ImagePreprocessor preprocessor;
     private CameraController cameraController;
+
+    private MultiObjectDetector multiObjectDetector;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         initializeFIRSensor();
-
         preprocessor = new ImagePreprocessor(IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_HEIGHT);
         initializeCamera();
-
+        initializeMultiObjectDetector();
 
         setContentView(R.layout.activity_main);
+    }
+
+    private void initializeMultiObjectDetector() {
+        multiObjectDetector = MultiObjectDetector.getInstance();
+        try {
+            multiObjectDetector.initialize(this, MODEL_FILE_PATH, LABEL_FILE_PATH);
+        } catch (FailedInitializeDetectorException e) {
+            e.printStackTrace();
+        }
     }
 
     private void initializeCamera() {
@@ -94,7 +110,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private ImagePreprocessor preprocessor;
     private ImageReader.OnImageAvailableListener onImageListener = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader imageReader) {
