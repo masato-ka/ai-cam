@@ -9,8 +9,10 @@ import java.util.ArrayList;
 
 public class DetectionView extends View {
 
-    private static final int OFFSET_X = 0;
-    private static final int OFFSET_Y = 0;
+    private static final int OFFSET_X = 80;
+    private static final int OFFSET_Y = 80;
+    private static final float SCALE = (float) 0.7;
+
     private Paint paint;
     private float strokeWidth = 2.0f;
 
@@ -34,15 +36,19 @@ public class DetectionView extends View {
         // Styleのストロークを設定する
         paint.setStyle(Paint.Style.FILL);
 
+        canvas.scale(SCALE, SCALE);
         if (cameraImage != null) {
-            float scaleWidth = (float) 800.0 / cameraImage.getWidth(); //TODO may be prepare set up file into Raspberri pi system.
+            float scaleWidth = (float) getWidth() / cameraImage.getWidth(); //TODO may be prepare set up file into Raspberri pi system.
             float scaleHeight = (float) getHeight() / cameraImage.getHeight();
-            canvas.scale(scaleWidth, scaleHeight);
-            canvas.drawBitmap(cameraImage, 0, 0, paint);
-            canvas.scale(cameraImage.getWidth() / (float) 800.0, 1);
+            RectF dst = new RectF();
+            dst.set(OFFSET_X, OFFSET_Y,
+                    (float) cameraImage.getWidth() + OFFSET_X,
+                    (float) cameraImage.getHeight() + OFFSET_Y);
+            canvas.drawBitmap(cameraImage, null, dst, paint);
         }
         drawResultRectangle(canvas);
         drawFRIHeatMap(canvas);
+        canvas.scale((float) 1.0, (float) 1.0);
     }
 
     private void drawFRIHeatMap(Canvas canvas) {

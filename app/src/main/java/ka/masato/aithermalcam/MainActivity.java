@@ -2,6 +2,8 @@ package ka.masato.aithermalcam;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.hardware.camera2.CameraAccessException;
 import android.media.Image;
 import android.media.ImageReader;
@@ -10,21 +12,25 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 import android.util.TimingLogger;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import com.google.android.things.pio.PeripheralManager;
+import ka.masato.aithermalcam.async.CameraAsyncTask;
+import ka.masato.aithermalcam.async.GridEyeAsyncTask;
 import ka.masato.aithermalcam.view.DetectionView;
-import ka.masato.aithermalcam.view.SensingData;
 import ka.masato.grideyelib.driver.GridEyeDriver;
 import ka.masato.library.ai.ssddetection.MultiObjectDetector;
 import ka.masato.library.ai.ssddetection.exception.FailedInitializeDetectorException;
-import ka.masato.library.ai.ssddetection.exception.UnInitializeDetectorException;
-import ka.masato.library.ai.ssddetection.model.Recognition;
 import ka.masato.library.device.camera.CameraController;
 import ka.masato.library.device.camera.ImagePreprocessor;
 import ka.masato.library.device.camera.exception.FailedCaptureImageException;
 import ka.masato.library.device.camera.exception.NoCameraFoundException;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.nio.ByteBuffer;
 
 import static java.lang.System.exit;
 
@@ -53,8 +59,6 @@ public class MainActivity extends Activity {
 
     private static final int IMAGE_WIDTH = 640;
     private static final int IMAGE_HEIGHT = 480;
-    private static final int RECOGNITION_IMAGE_WIDTH = 300;
-    private static final int RECOGNITION_IMAGE_HEIGHT = 300;
 
     private static final String MODEL_FILE_PATH = "detect.tflite";
     private static final String LABEL_FILE_PATH = "labelmap.txt";
@@ -78,11 +82,71 @@ public class MainActivity extends Activity {
     private Handler detectionHandler;
 
     TimingLogger logger = new TimingLogger(TAG + "_TIME", "testTimingLogger");
+    private TextView stdLabel;
+    private TextView averageTemp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        //Base Layout
+        LinearLayout baseLayout = new LinearLayout(this);
+        baseLayout.setOrientation(LinearLayout.HORIZONTAL);
+        baseLayout.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+        ));
+        setContentView(baseLayout);
+
+        //detectionView on Base Layout
+        detectionView = new DetectionView(this);
+        LinearLayout.LayoutParams detectionViewLayoutParam = new LinearLayout.LayoutParams(
+                550,
+                480
+        );
+        detectionView.setLayoutParams(detectionViewLayoutParam);
+
+        baseLayout.addView(detectionView);
+
+        //Sub Layout
+        LinearLayout subPanelLayout = new LinearLayout(this);
+        subPanelLayout.setOrientation(LinearLayout.VERTICAL);
+        subPanelLayout.setGravity(Gravity.CENTER);
+        subPanelLayout.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        subPanelLayout.setBackgroundColor(Color.WHITE);
+
+        baseLayout.addView(subPanelLayout);
+
+        //button view
+        Button recogButton = new Button(this);
+        recogButton.setText("Recognition");
+        recogButton.setGravity(Gravity.CENTER_VERTICAL);
+        recogButton.setBackgroundColor(Color.GRAY);
+        LinearLayout.LayoutParams buttonLayoutParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        recogButton.setLayoutParams(buttonLayoutParams);
+        recogButton.setOnClickListener(recogButtonCliclListener);
+        subPanelLayout.addView(recogButton);
+
+
+        stdLabel = new TextView(this);
+        stdLabel.setGravity(Gravity.CENTER_VERTICAL);
+        stdLabel.setText("STDV: 0.0");
+        subPanelLayout.addView(stdLabel);
+
+        averageTemp = new TextView(this);
+        averageTemp.setGravity(Gravity.CENTER_VERTICAL);
+        averageTemp.setText("TEMP: 0.0");
+        subPanelLayout.addView(averageTemp);
+
+
+        //start initialize peripheral
         initializeFIRSensor();
         preprocessor = new ImagePreprocessor(IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_HEIGHT);
         initializeCamera();
@@ -99,8 +163,6 @@ public class MainActivity extends Activity {
 
         mainHandler = new Handler();
 
-        detectionView = new DetectionView(this);
-        setContentView(detectionView);
 
         HandlerThread handlerThread = new HandlerThread("grideye");
         handlerThread.start();
@@ -109,6 +171,14 @@ public class MainActivity extends Activity {
 
 
     }
+
+    private View.OnClickListener recogButtonCliclListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View view) {
+            Log.d(TAG, "PRESS BUTTON");
+        }
+    };
+
 
     private void initializeMultiObjectDetector() {
         multiObjectDetector = MultiObjectDetector.getInstance();
@@ -153,36 +223,13 @@ public class MainActivity extends Activity {
         public void onImageAvailable(ImageReader imageReader) {
             Image image = imageReader.acquireLatestImage();
 
-            Bitmap showBitmap = preprocessor
-                    .preprocessImage(image);
-
-            Bitmap recogBitmap = Bitmap.createScaledBitmap(showBitmap,
-                    RECOGNITION_IMAGE_WIDTH, RECOGNITION_IMAGE_HEIGHT, false);
-
-            detectionHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        TimingLogger logger = new TimingLogger("LOG_TAG_TEST", "testTimingLogger");
-                        ArrayList<Recognition> result = multiObjectDetector.runDetection(recogBitmap, 10);
-                        detectionView.setDetectionObjects(result);
-                        logger.addSplit("afterDetection");
-                        logger.dumpToLog();
-                        result.stream().map(e -> e.getTitle()).forEach(System.out::println);
-                    } catch (UnInitializeDetectorException e) {
-                        Log.d(TAG, "Please initialize detector");
-                    }
-                }
-            });
-
-
-            mainHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    detectionView.setCameraImage(showBitmap);
-                    detectionView.invalidate();
-                }
-            });
+            ByteBuffer bb = image.getPlanes()[0].getBuffer();
+            final byte[] imageBytes = new byte[bb.remaining()];
+            bb.get(imageBytes);
+            final Bitmap showBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
+            image.close();
+            CameraAsyncTask cameraAsyncTask = new CameraAsyncTask(detectionView);
+            cameraAsyncTask.execute(showBitmap);
 
         }
     };
@@ -203,25 +250,8 @@ public class MainActivity extends Activity {
     private Runnable sensingGridEye = new Runnable() {
         @Override
         public void run() {
-            float[] temperatures = null;
-            try {
-                temperatures = gridEyeDriver.getTemperatures();
-                float stdev = calcStdev(temperatures);
-                if (stdev > 1.0) {
-                    Log.d(TAG, "STDEV :" + stdev);
-                }
-            } catch (IOException e) {
-                Log.e(TAG, "Failed get temperature.", e);
-            }
-            ArrayList<SensingData> sensingDataList = new ArrayList<>();
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
-                    SensingData sensingData = new SensingData(7 - j, 7 - i, temperatures[j + (i * 8)]);
-                    sensingDataList.add(sensingData);
-                }
-            }
-            detectionView.setSensingDataList(sensingDataList);
-
+            GridEyeAsyncTask gridEyeAsyncTask = new GridEyeAsyncTask(gridEyeDriver, detectionView);
+            gridEyeAsyncTask.execute();
             gridEyeHandler.postDelayed(this, 10);
         }
 
@@ -241,5 +271,6 @@ public class MainActivity extends Activity {
         float stdev = sum / data.length;
         return stdev;
     }
+
 
 }

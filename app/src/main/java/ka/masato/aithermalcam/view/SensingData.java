@@ -4,6 +4,9 @@ import android.graphics.Color;
 
 public class SensingData {
 
+    private static final int BOX_WIDTH = 80;
+    private static final int BOX_HEIGHT = 60;
+
     private double red = 0;
     private double blue = 0;
     private double green = 0;
@@ -15,6 +18,7 @@ public class SensingData {
     private int gain = 10;
     private double offsetX = 0.2;
     private double offsetGreen = 0.6;
+
 
     public SensingData(int indexX, int indexY, double value) {
         this.indexX = indexX;
@@ -46,19 +50,19 @@ public class SensingData {
     }
 
     public int getLeft() {
-        return (indexX) * 80;
+        return (indexX) * BOX_WIDTH;
     }
 
     public int getTop() {
-        return (indexY) * 60;
+        return (indexY) * BOX_HEIGHT;
     }
 
     public int getRight() {
-        return ((indexX) * 80) + 80;
+        return ((indexX) * BOX_WIDTH) + BOX_WIDTH;
     }
 
     public int getBottom() {
-        return ((indexY) * 60) + 60;
+        return ((indexY) * BOX_HEIGHT) + BOX_HEIGHT;
     }
 
 }
