@@ -30,6 +30,9 @@ public class ObjectDetectionAsyncTask extends AsyncTask<Bitmap, Void, ArrayList<
 
     @Override
     protected ArrayList<Recognition> doInBackground(Bitmap... bitmaps) {
+        if (bitmaps[0] == null) {
+            return null;
+        }
         Bitmap recogBitmap = Bitmap.createScaledBitmap(bitmaps[0],
                 RECOGNITION_IMAGE_WIDTH, RECOGNITION_IMAGE_HEIGHT, false);
 
@@ -44,12 +47,16 @@ public class ObjectDetectionAsyncTask extends AsyncTask<Bitmap, Void, ArrayList<
         } catch (UnInitializeDetectorException e) {
             Log.d(TAG, "Please initialize detector");
         }
+        detectionView.setDetectionImage(bitmaps[0]);
         return recognitions;
     }
 
     @Override
     protected void onPostExecute(ArrayList<Recognition> recognitions) {
+        if (recognitions == null) {
+            return;
+        }
         detectionView.setDetectionObjects(recognitions);
-        detectionView.invalidate();
+        //detectionView.invalidate();
     }
 }

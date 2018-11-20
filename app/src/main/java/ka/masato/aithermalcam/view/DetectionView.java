@@ -9,16 +9,16 @@ import java.util.ArrayList;
 
 public class DetectionView extends View {
 
-    private static final int OFFSET_X = 80;
-    private static final int OFFSET_Y = 80;
-    private static final float SCALE = (float) 0.7;
+    private static final int OFFSET_X = 0;
+    private static final int OFFSET_Y = 0;
+    private static final float SCALE = (float) 1.0;
 
     private Paint paint;
-    private float strokeWidth = 2.0f;
+    private float strokeWidth = 3.0f;
 
     private ArrayList<Recognition> detectionObjects;
     private Bitmap cameraImage;
-    private float[] temperatures;
+    private Bitmap detectionImage;
     private ArrayList<SensingData> sensingDataList;
 
     public DetectionView(Context context) {
@@ -64,6 +64,7 @@ public class DetectionView extends View {
                     sensingData.getRight() + OFFSET_X, sensingData.getBottom() + OFFSET_Y, paint);
             paint.setColor(Color.argb(255, 0, 0, 0));
             String value = Double.toString(sensingData.getValue());
+            paint.setTextSize(10);
             canvas.drawText(value, sensingData.getLeft() + OFFSET_X + 10, sensingData.getTop() + OFFSET_Y + 20, paint);
         }
     }
@@ -74,9 +75,11 @@ public class DetectionView extends View {
             paint.setColor(Color.GREEN);
             for (int i = 0; i < this.detectionObjects.size(); i++) {
                 Recognition mRecognition = this.detectionObjects.get(i);
-                if (mRecognition.getConfidence() < 0.5) {
+                if (mRecognition.getConfidence() < 0.45) {
                     continue;
                 }
+                paint.setTextSize(30);
+
                 canvas.drawText(mRecognition.getTitle(),
                         mRecognition.getLocation().left * 2.13f,
                         mRecognition.getLocation().top * 2.13f,
@@ -95,12 +98,11 @@ public class DetectionView extends View {
         this.cameraImage = cameraImage;
     }
 
+    public void setDetectionImage(Bitmap detectionImage) {
+        this.detectionImage = detectionImage;
+    }
     public void setDetectionObjects(ArrayList<Recognition> detectionObjects) {
         this.detectionObjects = detectionObjects;
-    }
-
-    public void setTemperatures(float[] temperatures) {
-        this.temperatures = temperatures;
     }
 
     public void setSensingDataList(ArrayList<SensingData> sensingDataList) {

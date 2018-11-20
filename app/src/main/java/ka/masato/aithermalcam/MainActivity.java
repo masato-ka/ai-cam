@@ -2,8 +2,7 @@ package ka.masato.aithermalcam;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Color;
+import android.graphics.RectF;
 import android.hardware.camera2.CameraAccessException;
 import android.media.Image;
 import android.media.ImageReader;
@@ -12,25 +11,28 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 import android.util.TimingLogger;
-import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.google.android.things.pio.PeripheralManager;
 import ka.masato.aithermalcam.async.CameraAsyncTask;
 import ka.masato.aithermalcam.async.GridEyeAsyncTask;
+import ka.masato.aithermalcam.model.ObjectInfo;
 import ka.masato.aithermalcam.view.DetectionView;
 import ka.masato.grideyelib.driver.GridEyeDriver;
 import ka.masato.library.ai.ssddetection.MultiObjectDetector;
 import ka.masato.library.ai.ssddetection.exception.FailedInitializeDetectorException;
+import ka.masato.library.ai.ssddetection.exception.UnInitializeDetectorException;
+import ka.masato.library.ai.ssddetection.model.Recognition;
 import ka.masato.library.device.camera.CameraController;
 import ka.masato.library.device.camera.ImagePreprocessor;
 import ka.masato.library.device.camera.exception.FailedCaptureImageException;
 import ka.masato.library.device.camera.exception.NoCameraFoundException;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import static java.lang.System.exit;
 
@@ -84,6 +86,13 @@ public class MainActivity extends Activity {
     TimingLogger logger = new TimingLogger(TAG + "_TIME", "testTimingLogger");
     private TextView stdLabel;
     private TextView averageTemp;
+    private Bitmap showBitmap;
+    private boolean isDoObjectDetection = false;
+    private boolean doDetection = false;
+    private int RECOGNITION_IMAGE_WIDTH = 300;
+    private int RECOGNITION_IMAGE_HEIGHT = 300;
+    private ArrayList<Recognition> recognitions;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,50 +110,12 @@ public class MainActivity extends Activity {
         //detectionView on Base Layout
         detectionView = new DetectionView(this);
         LinearLayout.LayoutParams detectionViewLayoutParam = new LinearLayout.LayoutParams(
-                550,
+                800,
                 480
         );
         detectionView.setLayoutParams(detectionViewLayoutParam);
 
         baseLayout.addView(detectionView);
-
-        //Sub Layout
-        LinearLayout subPanelLayout = new LinearLayout(this);
-        subPanelLayout.setOrientation(LinearLayout.VERTICAL);
-        subPanelLayout.setGravity(Gravity.CENTER);
-        subPanelLayout.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-        ));
-
-        subPanelLayout.setBackgroundColor(Color.WHITE);
-
-        baseLayout.addView(subPanelLayout);
-
-        //button view
-        Button recogButton = new Button(this);
-        recogButton.setText("Recognition");
-        recogButton.setGravity(Gravity.CENTER_VERTICAL);
-        recogButton.setBackgroundColor(Color.GRAY);
-        LinearLayout.LayoutParams buttonLayoutParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        recogButton.setLayoutParams(buttonLayoutParams);
-        recogButton.setOnClickListener(recogButtonCliclListener);
-        subPanelLayout.addView(recogButton);
-
-
-        stdLabel = new TextView(this);
-        stdLabel.setGravity(Gravity.CENTER_VERTICAL);
-        stdLabel.setText("STDV: 0.0");
-        subPanelLayout.addView(stdLabel);
-
-        averageTemp = new TextView(this);
-        averageTemp.setGravity(Gravity.CENTER_VERTICAL);
-        averageTemp.setText("TEMP: 0.0");
-        subPanelLayout.addView(averageTemp);
-
 
         //start initialize peripheral
         initializeFIRSensor();
@@ -159,15 +130,16 @@ public class MainActivity extends Activity {
         HandlerThread mainThread = new HandlerThread("main");
         mainThread.start();
         cameraSensingHandler = new Handler(mainThread.getLooper());
-        cameraSensingHandler.post(cameraSensingLoop);
+        cameraSensingHandler.post(cameraThread);
 
         mainHandler = new Handler();
 
 
-        HandlerThread handlerThread = new HandlerThread("grideye");
-        handlerThread.start();
-        gridEyeHandler = new Handler(handlerThread.getLooper());
-        gridEyeHandler.post(sensingGridEye);
+        //HandlerThread handlerThread = new HandlerThread("grideye");
+        //handlerThread.start();
+        //gridEyeHandler = new Handler(handlerThread.getLooper());
+        //gridEyeHandler.post(gridEyeThread);
+
 
 
     }
@@ -219,23 +191,42 @@ public class MainActivity extends Activity {
     }
 
     private ImageReader.OnImageAvailableListener onImageListener = new ImageReader.OnImageAvailableListener() {
+
         @Override
         public void onImageAvailable(ImageReader imageReader) {
             Image image = imageReader.acquireLatestImage();
-
-            ByteBuffer bb = image.getPlanes()[0].getBuffer();
-            final byte[] imageBytes = new byte[bb.remaining()];
-            bb.get(imageBytes);
-            final Bitmap showBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
+            showBitmap = preprocessor.convertImage2Bitmap(image);
             image.close();
+
+            Bitmap recogBitmap = Bitmap.createScaledBitmap(showBitmap,
+                    RECOGNITION_IMAGE_WIDTH, RECOGNITION_IMAGE_HEIGHT, false);
+
+            recognitions = new ArrayList<>();
+
+            try {
+                TimingLogger logger = new TimingLogger("LOG_TAG_TEST", "testTimingLogger");
+                recognitions = multiObjectDetector.runDetection(recogBitmap, 10);
+                detectionView.setDetectionObjects(recognitions);
+                logger.addSplit("afterDetection");
+                logger.dumpToLog();
+                recognitions.stream().map(e -> e.getTitle()).forEach(System.out::println);
+            } catch (UnInitializeDetectorException e) {
+                Log.d(TAG, "Please initialize detector");
+            }
+
+            detectionView.setDetectionImage(showBitmap);
             CameraAsyncTask cameraAsyncTask = new CameraAsyncTask(detectionView);
             cameraAsyncTask.execute(showBitmap);
+
+            GridEyeAsyncTask gridEyeAsyncTask = new GridEyeAsyncTask(gridEyeDriver, detectionView);
+            gridEyeAsyncTask.setGridEyeListener(gridEyeListener);
+            gridEyeAsyncTask.execute();
+
 
         }
     };
 
-
-    private Runnable cameraSensingLoop = new Runnable() {
+    private Runnable cameraThread = new Runnable() {
         @Override
         public void run() {
             try {
@@ -243,20 +234,48 @@ public class MainActivity extends Activity {
             } catch (FailedCaptureImageException e) {
                 Log.w(TAG, "Failed take picture.", e);
             }
-            cameraSensingHandler.postDelayed(this, 30);
+            //if(!doDetection) {
+            cameraSensingHandler.postDelayed(this, 600);
+            //}else{
+            //  cameraSensingHandler.postDelayed(this, 600);
+            //}
         }
     };
 
-    private Runnable sensingGridEye = new Runnable() {
+    private Runnable gridEyeThread = new Runnable() {
+
         @Override
         public void run() {
             GridEyeAsyncTask gridEyeAsyncTask = new GridEyeAsyncTask(gridEyeDriver, detectionView);
+            gridEyeAsyncTask.setGridEyeListener(gridEyeListener);
             gridEyeAsyncTask.execute();
             gridEyeHandler.postDelayed(this, 10);
         }
 
     };
 
+    private Runnable detectionThread = new Runnable() {
+        @Override
+        public void run() {
+
+        }
+    };
+
+    private GridEyeAsyncTask.GridEyeListener gridEyeListener = new GridEyeAsyncTask.GridEyeListener() {
+
+        @Override
+        public void getResult(float[] temperatures) {
+            float std = calcStdev(temperatures);
+            if (std >= 0.5) {
+                List<ObjectInfo> results = searchObjectTemperature(temperatures);
+                doDetection = true;
+            } else {
+                doDetection = false;
+            }
+
+        }
+
+    };
 
     private float calcStdev(float[] data) {
         float sum = 0;
@@ -270,6 +289,59 @@ public class MainActivity extends Activity {
         }
         float stdev = sum / data.length;
         return stdev;
+    }
+
+
+    private List<ObjectInfo> searchObjectTemperature(float[] temperatures) {
+        List<ObjectInfo> objectsInfo = new ArrayList<>();
+        if (recognitions == null) {
+            return objectsInfo;
+        }
+        for (Recognition recognition : this.recognitions) {
+            if (recognition.getConfidence() > 0.45) {
+                float[] objectTemp = getObjectTemperatures(recognition.getLocation(), temperatures);
+                if (objectTemp.length <= 0) {
+                    continue;
+                }
+
+                float sum = 0;
+                for (int i = 0; i < objectTemp.length; i++) {
+                    sum += objectTemp[i];
+                }
+                float average = sum / objectTemp.length;
+                ObjectInfo objectInfo = new ObjectInfo(recognition.getTitle(), average);
+                objectsInfo.add(objectInfo);
+                if (recognition.getTitle().equals("bottle")) {
+                    Log.i(TAG, "bottle temprature is " + average);
+                }
+            }
+        }
+        return objectsInfo;
+    }
+
+    private float[] getObjectTemperatures(RectF location, float[] temperatures) {
+
+        int left = (int) (location.left * 2.13f);
+        int top = (int) (location.top * 2.13f);
+        int right = (int) (location.right * 2.13f);
+        int bottom = (int) (location.bottom * 2.13f);
+        int startX = (left / 80) - 1 > 0 ? (left / 80) - 1 : 0;
+        int stopX = (right / 80) - 1 < 8 ? (right / 80) - 1 : 7;
+        int startY = (top / 60) - 1 > 0 ? (top / 60) - 1 : 0;
+        int stopY = (bottom / 60) - 1 < 8 ? (bottom / 60) - 1 : 7;
+
+        int length = ((stopX - startX) + 1) * ((stopY - startY) + 1);
+        float[] values = new float[length];
+
+        int i = 0;
+        for (int y = startY; y <= stopY; y++) {
+            for (int index = startX + (y * 8); index <= stopX + (y * 8); index++) {
+                values[i++] = temperatures[index];
+            }
+        }
+
+        Arrays.sort(values);
+        return values;
     }
 
 

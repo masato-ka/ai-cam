@@ -15,7 +15,7 @@ public class GridEyeAsyncTask extends AsyncTask<Void, Void, ArrayList<SensingDat
 
     private GridEyeDriver gridEyeDriver;
     private DetectionView detectionView;
-
+    private GridEyeListener gridEyeListener;
 
     public GridEyeAsyncTask(GridEyeDriver gridEyeDriver, DetectionView detectionView) {
         this.gridEyeDriver = gridEyeDriver;
@@ -28,6 +28,9 @@ public class GridEyeAsyncTask extends AsyncTask<Void, Void, ArrayList<SensingDat
         float[] temperatures = null;
         try {
             temperatures = gridEyeDriver.getTemperatures();
+            if (gridEyeListener != null) {
+                gridEyeListener.getResult(temperatures);
+            }
         } catch (IOException e) {
             Log.e(TAG, "Failed get temperatures ", e);
         }
@@ -49,4 +52,11 @@ public class GridEyeAsyncTask extends AsyncTask<Void, Void, ArrayList<SensingDat
     }
 
 
+    public void setGridEyeListener(GridEyeListener gridEyeListener) {
+        this.gridEyeListener = gridEyeListener;
+    }
+
+    public interface GridEyeListener {
+        public void getResult(float[] temperatures);
+    }
 }
